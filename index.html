@@ -58,13 +58,16 @@
       font-size: 13px;
       text-align: center;
       pointer-events: none;
+      white-space: nowrap;
     }
   </style>
 </head>
 
 <body>
 
-  <div id="status">Toque no botão e movimente o celular</div>
+  <div id="status">
+    Toque no botão e movimente o celular
+  </div>
 
   <button id="ativarMovimento">
     Ativar movimento
@@ -79,9 +82,7 @@
     shadow-intensity="1"
     exposure="1"
     environment-image="neutral"
-    camera-orbit="0deg 75deg auto"
-    min-camera-orbit="-35deg 55deg auto"
-    max-camera-orbit="35deg 95deg auto">
+    camera-orbit="0deg 75deg auto">
   </model-viewer>
 
   <script>
@@ -90,9 +91,12 @@
     const status = document.getElementById("status");
 
     let movimentoAtivo = false;
+    let sensorRecebido = false;
 
+    let alphaAnterior = null;
     let betaInicial = null;
-    let gammaInicial = null;
+
+    let rotacaoAcumulada = 0;
 
     let anguloHorizontalAtual = 0;
     let anguloVerticalAtual = 75;
@@ -100,12 +104,16 @@
     let anguloHorizontalAlvo = 0;
     let anguloVerticalAlvo = 75;
 
+    /*
+      Aumente estes valores para mais sensibilidade.
+    */
     const intensidadeHorizontal = 2.4;
     const intensidadeVertical = 1.6;
 
-    const limiteHorizontal = 30;
-    const limiteVerticalMinimo = 55;
-    const limiteVerticalMaximo = 95;
+    const limiteVerticalMinimo = 35;
+    const limiteVerticalMaximo = 145;
+
+    const suavidade = 0.14;
 
     function limitar(valor, minimo, maximo) {
       return Math.min(Math.max(valor, minimo), maximo);
@@ -114,28 +122,66 @@
     function tratarOrientacao(evento) {
       if (!movimentoAtivo) return;
 
+      const alpha = evento.alpha;
       const beta = evento.beta;
-      const gamma = evento.gamma;
 
-      if (beta === null || gamma === null) {
-        status.textContent = "O aparelho não forneceu dados do giroscópio";
+      if (alpha === null || beta === null) {
+        status.textContent =
+          "O aparelho não forneceu dados de orientação";
         return;
       }
 
-      if (betaInicial === null || gammaInicial === null) {
+      sensorRecebido = true;
+
+      /*
+        Primeira leitura: define a posição inicial.
+      */
+      if (alphaAnterior === null || betaInicial === null) {
+        alphaAnterior = alpha;
         betaInicial = beta;
-        gammaInicial = gamma;
+
         status.textContent = "Movimento ativado";
+        return;
       }
 
-      const movimentoVertical = beta - betaInicial;
-      const movimentoHorizontal = gamma - gammaInicial;
+      /*
+        Calcula quanto o celular girou desde a leitura anterior.
+      */
+      let diferencaAlpha = alpha - alphaAnterior;
 
-      anguloHorizontalAlvo = limitar(
-        movimentoHorizontal * intensidadeHorizontal,
-        -limiteHorizontal,
-        limiteHorizontal
-      );
+      /*
+        Corrige a passagem entre 359° e 0°.
+
+        Exemplo:
+        359° para 1° não deve ser -358°,
+        e sim aproximadamente +2°.
+      */
+      if (diferencaAlpha > 180) {
+        diferencaAlpha -= 360;
+      }
+
+      if (diferencaAlpha < -180) {
+        diferencaAlpha += 360;
+      }
+
+      /*
+        Acumula a rotação.
+
+        Isso permite:
+        360°, 720°, 1080° e assim por diante.
+      */
+      rotacaoAcumulada += diferencaAlpha;
+
+      alphaAnterior = alpha;
+
+      const movimentoVertical = beta - betaInicial;
+
+      /*
+        O sinal negativo pode ser invertido caso
+        o movimento horizontal fique ao contrário.
+      */
+      anguloHorizontalAlvo =
+        -rotacaoAcumulada * intensidadeHorizontal;
 
       anguloVerticalAlvo = limitar(
         75 + movimentoVertical * intensidadeVertical,
@@ -145,13 +191,13 @@
     }
 
     function animar() {
-      const suavidade = 0.14;
-
       anguloHorizontalAtual +=
-        (anguloHorizontalAlvo - anguloHorizontalAtual) * suavidade;
+        (anguloHorizontalAlvo - anguloHorizontalAtual) *
+        suavidade;
 
       anguloVerticalAtual +=
-        (anguloVerticalAlvo - anguloVerticalAtual) * suavidade;
+        (anguloVerticalAlvo - anguloVerticalAtual) *
+        suavidade;
 
       modelo.cameraOrbit =
         `${anguloHorizontalAtual}deg ` +
@@ -164,19 +210,31 @@
       try {
         if (
           typeof DeviceOrientationEvent !== "undefined" &&
-          typeof DeviceOrientationEvent.requestPermission === "function"
+          typeof DeviceOrientationEvent.requestPermission ===
+            "function"
         ) {
           const permissao =
             await DeviceOrientationEvent.requestPermission();
 
           if (permissao !== "granted") {
-            status.textContent = "Permissão de movimento negada";
+            status.textContent =
+              "Permissão de movimento negada";
             return;
           }
         }
 
+        alphaAnterior = null;
         betaInicial = null;
-        gammaInicial = null;
+
+        rotacaoAcumulada = 0;
+
+        anguloHorizontalAtual = 0;
+        anguloHorizontalAlvo = 0;
+
+        anguloVerticalAtual = 75;
+        anguloVerticalAlvo = 75;
+
+        sensorRecebido = false;
         movimentoAtivo = true;
 
         window.addEventListener(
@@ -188,13 +246,25 @@
         botao.style.display = "none";
         status.textContent = "Movimente o celular";
 
+        setTimeout(() => {
+          if (!sensorRecebido) {
+            status.textContent =
+              "Abra no Chrome ou Safari e permita os sensores";
+          }
+        }, 2500);
+
       } catch (erro) {
         console.error(erro);
-        status.textContent = "Não foi possível ativar o movimento";
+
+        status.textContent =
+          "Não foi possível ativar o movimento";
       }
     }
 
-    botao.addEventListener("click", ativarMovimento);
+    botao.addEventListener(
+      "click",
+      ativarMovimento
+    );
 
     animar();
   </script>
