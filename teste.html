@@ -1,0 +1,36 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <script type="module"
+    src="https://ajax.googleapis.com/ajax/libs/model-viewer/4.3.1/model-viewer.min.js">
+  </script>
+
+  <style>
+    body {
+      margin: 0;
+      background: #f2f2f2;
+    }
+
+    model-viewer {
+      width: 100vw;
+      height: 100vh;
+    }
+  </style>
+</head>
+
+<body>
+  <model-viewer
+    src="./3DModel.glb"
+    alt="Modelo 3D"
+    camera-controls
+    touch-action="pan-y"
+    auto-rotate
+    ar
+    shadow-intensity="1">
+  </model-viewer>
+</body>
+</html>
